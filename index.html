@@ -1,0 +1,1466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlanHelper</title>
+<style>
+:root {
+  --bg: #1c1c1e;
+  --bg-secondary: #2c2c2e;
+  --text: #f5f5f7;
+  --text-secondary: #98989d;
+  --border: #3a3a3c;
+  --accent: #0a84ff;
+  --accent-bg: #1a2a3f;
+  --done: #30d158;
+  --warning: #ff9f0a;
+  --sidebar-width: 200px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+input, textarea { background: var(--bg); color: var(--text); }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.app-container { display: flex; height: 100vh; }
+
+/* 侧边栏 */
+.sidebar { width: var(--sidebar-width); background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 16px 0; flex-shrink: 0; }
+.sidebar-title { padding: 0 16px 16px; font-size: 18px; font-weight: 700; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.sidebar-nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; flex: 1; }
+.sidebar-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--text-secondary); transition: all 0.15s; user-select: none; }
+.sidebar-item:hover { background: var(--border); }
+.sidebar-item.active { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+.sidebar-footer { padding: 8px; border-top: 1px solid var(--border); margin-top: auto; }
+
+/* 主内容区 */
+.main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.page { display: none; padding: 24px; overflow-y: auto; height: 100%; }
+.page.active { display: flex; flex-direction: column; }
+/* === Stats Roadmap === */
+.stats-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.stats-tab { padding: 8px 18px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--text-secondary); background: transparent; transition: all 0.15s; user-select: none; }
+.stats-tab:hover { background: var(--border); }
+.stats-tab.active { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+
+.stats-canvas-wrap { flex: 1; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; position: relative; min-height: 400px; background: var(--bg-secondary); cursor: grab; }
+.stats-canvas-wrap:active { cursor: grabbing; }
+.stats-canvas { position: relative; transform-origin: 0 0; width: 3000px; height: 3000px; }
+.stats-canvas svg.connections { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.stats-canvas svg.connections line, .stats-canvas svg.connections path { pointer-events: stroke; cursor: pointer; }
+.stats-canvas svg.connections line:hover, .stats-canvas svg.connections path:hover { stroke-width: 4; }
+
+.roadmap-card { position: absolute; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; min-width: 140px; max-width: 200px; cursor: grab; user-select: none; z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: box-shadow 0.15s; }
+.roadmap-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.35); }
+.roadmap-card:active { cursor: grabbing; }
+.roadmap-card .card-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.roadmap-card .card-meta { font-size: 11px; color: var(--text-secondary); }
+.roadmap-card .card-date { font-size: 15px; font-weight: 600; color: var(--accent); margin-top: 4px; }
+.roadmap-card.drag-over { border-color: var(--accent); box-shadow: 0 0 12px rgba(10,132,255,0.5); }
+.roadmap-card .card-connector { position: absolute; right: -6px; bottom: -6px; width: 14px; height: 14px; background: var(--accent); border: 2px solid var(--bg); border-radius: 50%; cursor: crosshair; z-index: 5; pointer-events: all; }
+.roadmap-card .card-connector-left { position: absolute; left: -6px; bottom: -6px; width: 14px; height: 14px; background: var(--accent); border: 2px solid var(--bg); border-radius: 50%; cursor: crosshair; z-index: 5; pointer-events: all; }
+.roadmap-card.done { border-color: var(--done); }
+.roadmap-card.done .card-title::before { content: '✅ '; }
+
+.roadmap-pool { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-top: 16px; background: var(--bg-secondary); }
+.roadmap-pool-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; color: var(--text-secondary); }
+.roadmap-pool-cards { display: flex; gap: 8px; flex-wrap: wrap; min-height: 50px; }
+.pool-card { background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 8px 14px; cursor: grab; font-size: 13px; user-select: none; }
+.pool-card:hover { border-color: var(--accent); }
+.pool-card:active { cursor: grabbing; }
+
+.zoom-controls { position: absolute; bottom: 12px; right: 12px; display: flex; gap: 4px; z-index: 10; }
+.zoom-controls button { width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+.zoom-controls button:hover { background: var(--bg-secondary); }
+.zoom-level { font-size: 11px; color: var(--text-secondary); position: absolute; bottom: 48px; right: 12px; z-index: 10; }
+
+/* Stats modal */
+.stats-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.stats-modal { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 14px; padding: 24px; width: 420px; max-width: 90vw; max-height: 80vh; overflow-y: auto; }
+.stats-modal h3 { font-size: 18px; margin-bottom: 16px; }
+.stats-modal .field-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+.stats-modal .field-value { font-size: 14px; margin-bottom: 14px; }
+.stats-modal textarea { width: 100%; min-height: 120px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 14px; font-family: inherit; resize: vertical; background: var(--bg); color: var(--text); }
+.stats-modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.stats-modal .modal-actions button { padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+
+</style>
+</head>
+<body>
+<div class="app-container">
+  <div class="sidebar">
+    <div class="sidebar-title">📋 PlanHelper</div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-item active" data-page="goals">📌 长期计划</div>
+      <div class="sidebar-item" data-page="daily">📅 今日计划</div>
+      <div class="sidebar-item" data-page="calendar">🗓️ 日历</div>
+      <div class="sidebar-item" data-page="stats">📊 进度</div>
+      <div class="sidebar-item" data-page="data">⚙️ 数据管理</div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-item" id="exportBtn">📤 导出 JSON</div>
+      <div class="sidebar-item" id="importBtn">📥 导入 JSON</div>
+    </div>
+  </div>
+  <div class="main-content">
+    <div id="page-goals" class="page active"></div>
+    <div id="page-daily" class="page"></div>
+    <div id="page-calendar" class="page"></div>
+    <div id="page-stats" class="page"></div>
+    <div id="page-data" class="page"></div>
+  </div>
+</div>
+
+<script>
+// === 工具函数 ===
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function getTodayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function formatDateCN(str) {
+  const parts = str.split('-');
+  return `${parseInt(parts[0])}年${parseInt(parts[1])}月${parseInt(parts[2])}日`;
+}
+
+// === 数据模型 ===
+const DEFAULT_DATA = {
+  version: 3,
+  goals: [],
+  routines: [],
+  days: {}
+};
+
+// === Store ===
+const Store = {
+  data: null,
+
+  init() {
+    const saved = localStorage.getItem('planhelper_data');
+    if (saved) {
+      try {
+        this.data = JSON.parse(saved);
+        this.migrate();
+      } catch(e) {
+        this.data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+      }
+    } else {
+      this.data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+      this.save();
+    }
+  },
+
+  migrate() {
+    let changed = false;
+
+    // v1 → v2: add canvas fields
+    if (!this.data.version || this.data.version < 2) {
+      if (!Array.isArray(this.data.goals)) return;
+      for (const goal of this.data.goals) {
+        if (!Array.isArray(goal.phases)) continue;
+        for (const phase of goal.phases) {
+          if (!Array.isArray(phase.tasks)) continue;
+          for (const task of phase.tasks) {
+            if (task.canvas_position === undefined) {
+              task.canvas_position = null;
+              changed = true;
+            }
+            if (task.connections === undefined) {
+              task.connections = [];
+              changed = true;
+            }
+            if (task.completion_note === undefined) {
+              task.completion_note = '';
+              changed = true;
+            }
+          }
+        }
+      }
+      this.data.version = 2;
+      changed = true;
+    }
+
+    // v2 → v3: sync slot.done to task.done
+    if (!this.data.version || this.data.version < 3) {
+      if (this.data.days) {
+        for (const day of Object.values(this.data.days)) {
+          if (!Array.isArray(day.slots)) continue;
+          for (const slot of day.slots) {
+            if (slot.done && slot.task_id) {
+              for (const goal of this.data.goals) {
+                if (!Array.isArray(goal.phases)) continue;
+                for (const phase of goal.phases) {
+                  if (!Array.isArray(phase.tasks)) continue;
+                  const task = phase.tasks.find(t => t.id === slot.task_id);
+                  if (task && !task.done) {
+                    task.done = true;
+                    changed = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      this.data.version = 3;
+      changed = true;
+    }
+
+    if (changed) this.save();
+  },
+
+  save() {
+    localStorage.setItem('planhelper_data', JSON.stringify(this.data));
+  },
+
+  // Goals
+  getGoals() { return this.data.goals; },
+
+  addGoal(title, description) {
+    const goal = { id: generateId(), title, description: description || '', phases: [] };
+    this.data.goals.push(goal);
+    this.save();
+    return goal;
+  },
+
+  updateGoal(id, updates) {
+    const goal = this.data.goals.find(g => g.id === id);
+    if (goal) Object.assign(goal, updates);
+    this.save();
+  },
+
+  deleteGoal(id) {
+    this.data.goals = this.data.goals.filter(g => g.id !== id);
+    this.save();
+  },
+
+  // Phases
+  addPhase(goalId, title) {
+    const goal = this.data.goals.find(g => g.id === goalId);
+    if (!goal) return null;
+    const phase = { id: generateId(), title, tasks: [] };
+    goal.phases.push(phase);
+    this.save();
+    return phase;
+  },
+
+  // Tasks
+  addTask(goalId, phaseId, title, estimatedMinutes) {
+    const goal = this.data.goals.find(g => g.id === goalId);
+    if (!goal) return null;
+    const phase = goal.phases.find(p => p.id === phaseId);
+    if (!phase) return null;
+    const task = { id: generateId(), title, estimated_minutes: estimatedMinutes || 60, done: false, completed_at: null, canvas_position: null, connections: [], completion_note: '' };
+    phase.tasks.push(task);
+    this.save();
+    return task;
+  },
+
+  toggleTask(taskId) {
+    for (const goal of this.data.goals) {
+      for (const phase of goal.phases) {
+        const task = phase.tasks.find(t => t.id === taskId);
+        if (task) { task.done = !task.done; task.completed_at = task.done ? getTodayStr() : null; this.save(); return task; }
+      }
+    }
+    return null;
+  },
+
+  deleteTask(taskId) {
+    for (const goal of this.data.goals) {
+      for (const phase of goal.phases) {
+        const idx = phase.tasks.findIndex(t => t.id === taskId);
+        if (idx >= 0) { phase.tasks.splice(idx, 1); this.save(); return true; }
+      }
+    }
+    return false;
+  },
+
+  findTask(taskId) {
+    for (const g of this.data.goals) {
+      for (const p of g.phases) {
+        const t = p.tasks.find(t => t.id === taskId);
+        if (t) return t;
+      }
+    }
+    return null;
+  },
+
+  // Daily
+  getDay(dateStr) {
+    if (!this.data.days[dateStr]) {
+      this.data.days[dateStr] = { available_hours: 0, slots: [], note: '', routines: {} };
+    }
+    return this.data.days[dateStr];
+  },
+
+  addSlot(dateStr, taskId, start, end) {
+    const day = this.getDay(dateStr);
+    day.slots.push({ task_id: taskId, start, end: end || start, done: false });
+    this.save();
+  },
+
+  toggleSlotDone(dateStr, slotIndex) {
+    const day = this.getDay(dateStr);
+    if (!day.slots[slotIndex]) return;
+    const slot = day.slots[slotIndex];
+    slot.done = !slot.done;
+    // 同步任务本身的 done 状态
+    for (const goal of this.data.goals) {
+      for (const phase of goal.phases) {
+        const task = phase.tasks.find(t => t.id === slot.task_id);
+        if (task) { task.done = slot.done; task.completed_at = slot.done ? dateStr : null; this.save(); return; }
+      }
+    }
+    this.save();
+  },
+
+  removeSlot(dateStr, slotIndex) {
+    const day = this.getDay(dateStr);
+    day.slots.splice(slotIndex, 1);
+    this.save();
+  },
+
+  bulkImportGoals(items) {
+    for (const item of items) {
+      if (!item.title) continue;
+      const goal = this.addGoal(item.title, item.description || '');
+      if (item.phases && Array.isArray(item.phases)) {
+        for (const phase of item.phases) {
+          if (!phase.title) continue;
+          const p = this.addPhase(goal.id, phase.title);
+          if (phase.tasks && Array.isArray(phase.tasks)) {
+            for (const task of phase.tasks) {
+              if (!task.title) continue;
+              this.addTask(goal.id, p.id, task.title, task.estimated_minutes || 60);
+            }
+          }
+        }
+      }
+    }
+  },
+
+  // Routines
+  getRoutines() { return this.data.routines || []; },
+
+  addRoutine(title, estimatedMinutes) {
+    const routine = { id: generateId(), title, estimated_minutes: estimatedMinutes || 30 };
+    if (!this.data.routines) this.data.routines = [];
+    this.data.routines.push(routine);
+    this.save();
+    return routine;
+  },
+
+  deleteRoutine(id) {
+    if (!this.data.routines) return;
+    this.data.routines = this.data.routines.filter(r => r.id !== id);
+    this.save();
+  },
+
+  toggleRoutineDay(routineId, dateStr) {
+    const day = this.getDay(dateStr);
+    if (!day.routines) day.routines = {};
+    day.routines[routineId] = !day.routines[routineId];
+    this.save();
+  },
+
+  // Import/Export
+  exportJSON() {
+    return JSON.stringify(this.data, null, 2);
+  },
+
+  importJSON(jsonStr) {
+    const parsed = JSON.parse(jsonStr);
+    if (typeof parsed.version !== 'number' || !Array.isArray(parsed.goals)) throw new Error('文件格式无效，请检查');
+    this.data = parsed;
+    this.migrate();
+    this.save();
+  }
+};
+
+// === 初始化 ===
+Store.init();
+
+// === Render 函数 ===
+function renderAll() {
+  renderGoals();
+  renderDaily();
+  renderCalendar();
+  renderStats();
+  renderData();
+}
+
+function renderGoals() {
+  const el = document.getElementById('page-goals');
+  let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">';
+  html += '<h2>📌 长期计划</h2>';
+  html += '<div style="display:flex;gap:8px;">';
+  html += '<button onclick="showAddGoalDialog()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;">+ 添加目标</button>';
+  html += '<button onclick="showBulkImportDialog()" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:14px;background:var(--bg);color:var(--text);">📥 批量导入</button>';
+  html += '</div></div>';
+
+  const goals = Store.getGoals();
+  if (goals.length === 0) {
+    html += '<div style="text-align:center;padding:60px 20px;color:var(--text-secondary);"><p style="font-size:40px;margin-bottom:12px;">📋</p><p>还没有长期目标，点击上方按钮添加</p></div>';
+  } else {
+    html += '<div style="display:flex;flex-direction:column;gap:12px;">';
+    for (const goal of goals) {
+      const totalTasks = goal.phases.reduce((s, p) => s + p.tasks.length, 0);
+      const doneTasks = goal.phases.reduce((s, p) => s + p.tasks.filter(t => t.done).length, 0);
+      const pct = totalTasks ? Math.round(doneTasks / totalTasks * 100) : 0;
+
+      html += '<div style="border:1px solid var(--border);border-radius:10px;padding:16px;">';
+      html += `<div style="display:flex;justify-content:space-between;align-items:start;cursor:pointer;" onclick="toggleGoalExpand('${goal.id}')">`;
+      html += `<div><div style="font-size:16px;font-weight:600;">🎯 ${escapeHtml(goal.title)}</div>`;
+      html += `<div style="font-size:13px;color:var(--text-secondary);margin-top:2px;">${goal.phases.length} 个阶段 · ${totalTasks} 个任务 · ${pct}%</div></div>`;
+      html += `<div style="display:flex;gap:6px;"><button onclick="event.stopPropagation();showEditGoalDialog('${goal.id}')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">✎</button>`;
+      html += `<button onclick="event.stopPropagation();confirmDeleteGoal('${goal.id}')" style="background:none;border:1px solid #ff3b30;color:#ff3b30;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">✕</button></div>`;
+      html += '</div>';
+      html += `<div style="height:6px;background:var(--border);border-radius:3px;margin-top:8px;"><div style="width:${pct}%;height:100%;background:var(--done);border-radius:3px;transition:width 0.3s;"></div></div>`;
+      html += `<div id="goal-${goal.id}-phases" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">`;
+
+      for (const phase of goal.phases) {
+        html += '<div style="margin-bottom:10px;padding:10px 12px;background:var(--bg-secondary);border-radius:8px;">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+        html += `<span style="font-weight:500;font-size:14px;">📂 ${escapeHtml(phase.title)}</span>`;
+        html += `<button onclick="event.stopPropagation();showAddTaskDialog('${goal.id}','${phase.id}')" style="background:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;">+ 任务</button></div>`;
+
+        for (const task of phase.tasks) {
+          html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:14px;">';
+          html += `<span style="cursor:pointer;font-size:16px;flex-shrink:0;" onclick="toggleTaskDone('${task.id}')">${task.done ? '✅' : '⬜'}</span>`;
+          html += `<span style="${task.done ? 'text-decoration:line-through;color:var(--text-secondary)' : ''}">${escapeHtml(task.title)}</span>`;
+          html += `<span style="font-size:12px;color:var(--text-secondary);margin-left:auto;">${task.estimated_minutes}min</span>`;
+          html += `<span style="cursor:pointer;font-size:12px;color:#ff3b30;flex-shrink:0;" onclick="deleteTask('${task.id}')">✕</span></div>`;
+        }
+        if (phase.tasks.length === 0) {
+          html += '<div style="font-size:13px;color:var(--text-secondary);padding:4px 0;">暂无任务</div>';
+        }
+        html += '</div>';
+      }
+
+      if (goal.phases.length === 0) {
+        html += '<div style="font-size:13px;color:var(--text-secondary);padding:4px 0;">暂无阶段</div>';
+      }
+      html += `<button onclick="event.stopPropagation();showAddPhaseDialog('${goal.id}')" style="background:none;border:1px dashed var(--border);border-radius:6px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--text-secondary);width:100%;">+ 添加阶段</button>`;
+      html += '</div></div>';
+    }
+    html += '</div>';
+  }
+
+  // 日常惯例
+  const routines = Store.getRoutines();
+  html += '<div style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+  html += '<h3>🔄 日常惯例</h3>';
+  html += '<button onclick="showAddRoutineDialog()" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;">+ 添加惯例</button>';
+  html += '</div>';
+  if (routines.length === 0) {
+    html += '<div style="font-size:13px;color:var(--text-secondary);padding:12px 0;text-align:center;">还没有日常惯例，添加后会每天自动出现在今日计划中</div>';
+  } else {
+    for (const r of routines) {
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;">';
+      html += `<span style="flex:1;font-size:14px;">${escapeHtml(r.title)}</span>`;
+      html += `<span style="font-size:12px;color:var(--text-secondary);">${r.estimated_minutes}min</span>`;
+      html += `<span onclick="deleteRoutine('${r.id}')" style="cursor:pointer;font-size:14px;color:#ff3b30;">✕</span></div>`;
+    }
+  }
+  html += '</div>';
+
+  el.innerHTML = html;
+}
+
+// === 今日计划 ===
+let dragData = null;
+let goalCollapsedState = {};
+
+function toggleGoalCollapse(goalId) {
+  goalCollapsedState[goalId] = !goalCollapsedState[goalId];
+  const el = document.getElementById('goal-pool-' + goalId);
+  if (el) el.style.display = goalCollapsedState[goalId] ? 'none' : 'block';
+}
+
+function renderDaily() {
+  const el = document.getElementById('page-daily');
+  const today = getTodayStr();
+  const day = Store.getDay(today);
+  const goals = Store.getGoals();
+
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <h2>📅 今日计划 · ${formatDateCN(today)}</h2>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:14px;">空闲</span>
+      <input id="avail-hours" type="number" min="0" max="24" value="${day.available_hours}" style="width:55px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;text-align:center;font-size:14px;background:var(--bg);color:var(--text);">
+      <span style="font-size:14px;">小时</span>
+    </div>
+  </div>`;
+
+  html += `<div style="flex:1;display:flex;gap:16px;overflow:hidden;min-height:0;">`;
+
+  // 左侧：时间线
+  html += '<div style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px 12px;">';
+  for (let h = 8; h <= 23; h++) {
+    const hourStr = String(h).padStart(2, '0');
+
+    // 每格标记是否在整点(:00) — 显示时间标签
+    html += `<div style="display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:38px;">`;
+    html += `<span style="width:30px;font-size:10px;color:var(--text-secondary);flex-shrink:0;">${h}:00</span>`;
+
+    // 左半格 (:00-:30)
+    const slot1Idx = day.slots.findIndex(s => s.start === `${hourStr}:00`);
+    const slot1 = slot1Idx >= 0 ? day.slots[slot1Idx] : null;
+    html += `<div ondragover="event.preventDefault()" ondrop="dropOnTimeline(event,'${hourStr}:00')" style="flex:1;height:34px;border-right:1px dashed var(--border);${slot1 ? 'background:var(--accent-bg);border-radius:4px;' : 'background:transparent;'}display:flex;align-items:center;padding:0 4px;cursor:${slot1 ? 'grab' : 'default'};">`;
+    if (slot1) {
+      const t1 = getSlotTaskTitle(slot1.task_id);
+      html += `<span style="font-size:11px;color:var(--text);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" draggable="true" ondragstart="dragSlot(event,'${hourStr}:00')">${escapeHtml(t1)}</span>`;
+      html += `<span style="cursor:pointer;font-size:13px;flex-shrink:0;" onclick="event.stopPropagation();toggleSlotDone('${hourStr}:00')">${slot1.done ? '✅' : '⬜'}</span>`;
+      html += `<span style="cursor:pointer;font-size:11px;color:#ff3b30;flex-shrink:0;margin-left:2px;" onclick="event.stopPropagation();removeSlot('${hourStr}:00',event)">✕</span>`;
+    }
+    html += '</div>';
+
+    // 右半格 (:30-:00)
+    const slot2Idx = day.slots.findIndex(s => s.start === `${hourStr}:30`);
+    const slot2 = slot2Idx >= 0 ? day.slots[slot2Idx] : null;
+    html += `<div ondragover="event.preventDefault()" ondrop="dropOnTimeline(event,'${hourStr}:30')" style="flex:1;height:34px;${slot2 ? 'background:var(--accent-bg);border-radius:4px;' : 'background:transparent;'}display:flex;align-items:center;padding:0 4px;cursor:${slot2 ? 'grab' : 'default'};">`;
+    if (slot2) {
+      const t2 = getSlotTaskTitle(slot2.task_id);
+      html += `<span style="font-size:11px;color:var(--text);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" draggable="true" ondragstart="dragSlot(event,'${hourStr}:30')">${escapeHtml(t2)}</span>`;
+      html += `<span style="cursor:pointer;font-size:13px;flex-shrink:0;" onclick="event.stopPropagation();toggleSlotDone('${hourStr}:30')">${slot2.done ? '✅' : '⬜'}</span>`;
+      html += `<span style="cursor:pointer;font-size:11px;color:#ff3b30;flex-shrink:0;margin-left:2px;" onclick="event.stopPropagation();removeSlot('${hourStr}:30',event)">✕</span>`;
+    }
+    html += '</div></div>';
+  }
+  html += '</div>';
+
+  // 右侧：任务池（按目标折叠）
+  html += '<div style="width:260px;flex-shrink:0;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--bg-secondary);display:flex;flex-direction:column;">';
+  html += '<div style="font-weight:600;margin-bottom:10px;">🎯 任务池</div>';
+
+  // 日常惯例任务自动出现在任务池
+  const routines = Store.getRoutines();
+  let hasRoutinesInPool = false;
+  for (const r of routines) {
+    if (day.slots.some(s => s.task_id === 'routine:' + r.id)) continue;
+    hasRoutinesInPool = true;
+    html += `<div draggable="true" ondragstart="dragRoutine(event,'${r.id}')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;cursor:grab;margin-bottom:3px;font-size:13px;border-left:3px solid #8e8e93;">`;
+    html += `<div style="font-weight:500;font-size:12px;">🔄 ${escapeHtml(r.title)}</div>`;
+    html += `<div style="font-size:10px;color:var(--text-secondary);margin-top:1px;">${r.estimated_minutes}min</div></div>`;
+  }
+
+  let hasUnscheduled = false;
+  for (const goal of goals) {
+    // 收集该目标下未安排的任务
+    const goalTasks = [];
+    for (const phase of goal.phases) {
+      for (const task of phase.tasks) {
+        if (task.done) continue;
+        if (day.slots.some(s => s.task_id === task.id)) continue;
+        goalTasks.push(task);
+      }
+    }
+    if (goalTasks.length === 0) continue;
+    hasUnscheduled = true;
+    const collapsed = goalCollapsedState[goal.id] || false;
+    html += `<div style="margin-bottom:4px;">`;
+    html += `<div onclick="toggleGoalCollapse('${goal.id}')" style="display:flex;align-items:center;gap:4px;padding:5px 4px;cursor:pointer;border-radius:4px;font-size:13px;font-weight:500;user-select:none;">`;
+    html += `<span style="font-size:10px;color:var(--text-secondary);transition:transform 0.15s;${collapsed ? '' : 'transform:rotate(90deg)'}">▶</span>`;
+    html += `${escapeHtml(goal.title)} <span style="font-size:11px;color:var(--text-secondary);font-weight:400;">(${goalTasks.length})</span></div>`;
+    html += `<div id="goal-pool-${goal.id}" style="${collapsed ? 'display:none;' : ''}padding-left:4px;">`;
+    for (const task of goalTasks) {
+      html += `<div draggable="true" ondragstart="dragTask(event,'${task.id}')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;cursor:grab;margin-bottom:3px;font-size:13px;">`;
+      html += `<div style="font-weight:500;font-size:12px;">${escapeHtml(task.title)}</div>`;
+      html += `<div style="font-size:10px;color:var(--text-secondary);margin-top:1px;">${task.estimated_minutes}min</div></div>`;
+    }
+    html += '</div></div>';
+  }
+  if (!hasUnscheduled && !hasRoutinesInPool) {
+    html += '<div style="font-size:13px;color:var(--text-secondary);padding:20px 8px;text-align:center;">所有任务已安排 ✅</div>';
+  }
+
+  // 备注
+  html += `<div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--border);margin-top:12px;">
+    <div style="font-weight:600;margin-bottom:6px;">📝 备注</div>
+    <textarea id="daily-note" onchange="saveDailyNote()" style="width:100%;height:70px;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px;resize:vertical;font-family:inherit;background:var(--bg);color:var(--text);">${escapeHtml(day.note || '')}</textarea>
+  </div>`;
+
+  html += '</div></div>';
+  el.innerHTML = html;
+}
+
+// 拖拽
+function dragTask(e, taskId) {
+  dragData = { type: 'task', taskId };
+  e.dataTransfer.effectAllowed = 'copy';
+}
+
+function dragSlot(e, time) {
+  dragData = { type: 'slot', time };
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function dragRoutine(e, routineId) {
+  dragData = { type: 'routine', routineId };
+  e.dataTransfer.effectAllowed = 'copy';
+}
+
+function getSlotTaskTitle(taskId) {
+  if (typeof taskId === 'string' && taskId.startsWith('routine:')) {
+    const rid = taskId.slice(8);
+    const r = Store.getRoutines().find(r => r.id === rid);
+    return r ? r.title : '?';
+  }
+  const t = Store.findTask(taskId);
+  return t ? t.title : '?';
+}
+
+function dropOnTimeline(e, time) {
+  e.preventDefault();
+  if (!dragData) return;
+  const today = getTodayStr();
+
+  // 检查该时间格是否已被占用
+  const day = Store.getDay(today);
+  if (day.slots.some(s => s.start === time)) return;
+
+  if (dragData.type === 'task') {
+    Store.addSlot(today, dragData.taskId, time);
+    renderAll();
+  } else if (dragData.type === 'routine') {
+    Store.addSlot(today, 'routine:' + dragData.routineId, time);
+    renderAll();
+  } else if (dragData.type === 'slot' && dragData.time !== time) {
+    // 从旧位置移到新位置
+    const idx = day.slots.findIndex(s => s.start === dragData.time);
+    if (idx >= 0) {
+      const taskId = day.slots[idx].task_id;
+      Store.removeSlot(today, idx);
+      Store.addSlot(today, taskId, time);
+    }
+    renderAll();
+  }
+  dragData = null;
+}
+
+function toggleSlotDone(time) {
+  const today = getTodayStr();
+  const day = Store.getDay(today);
+  const idx = day.slots.findIndex(s => s.start === time);
+  if (idx >= 0) {
+    Store.toggleSlotDone(today, idx);
+    renderAll();
+  }
+}
+
+function removeSlot(time, e) {
+  e.preventDefault();
+  const today = getTodayStr();
+  const day = Store.getDay(today);
+  const idx = day.slots.findIndex(s => s.start === time);
+  if (idx >= 0) {
+    Store.removeSlot(today, idx);
+    renderAll();
+  }
+}
+
+// 空闲时间保存
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'avail-hours') {
+    const today = getTodayStr();
+    Store.getDay(today).available_hours = parseInt(e.target.value) || 0;
+    Store.save();
+  }
+});
+
+function saveDailyNote() {
+  const today = getTodayStr();
+  Store.getDay(today).note = document.getElementById('daily-note').value;
+  Store.save();
+}
+
+// === 日历 ===
+let calendarMonth = new Date().getMonth();
+let calendarYear = new Date().getFullYear();
+
+function renderCalendar() {
+  const el = document.getElementById('page-calendar');
+  const firstDay = new Date(calendarYear, calendarMonth, 1);
+  const lastDay = new Date(calendarYear, calendarMonth + 1, 0);
+  const startDayOfWeek = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+  const monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <h2>🗓️ ${calendarYear}年 ${monthNames[calendarMonth]}</h2>
+    <div style="display:flex;gap:8px;">
+      <button onclick="changeMonth(-1)" style="padding:6px 14px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--bg);font-size:14px;">‹ 上月</button>
+      <button onclick="changeMonth(1)" style="padding:6px 14px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--bg);font-size:14px;">下月 ›</button>
+    </div>
+  </div>`;
+
+  const weekDays = ['日','一','二','三','四','五','六'];
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;">';
+  for (const d of weekDays) {
+    html += `<div style="text-align:center;font-size:13px;color:var(--text-secondary);font-weight:500;padding:6px 0;">${d}</div>`;
+  }
+
+  // 日历网格
+  for (let i = 0; i < (startDayOfWeek === 0 ? 6 : startDayOfWeek - 1); i++) {
+    html += '<div></div>';
+  }
+
+  const todayStr = getTodayStr();
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calendarYear}-${String(calendarMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayData = Store.data.days[dateStr];
+    const totalSlots = dayData ? dayData.slots.length : 0;
+    const doneSlots = dayData ? dayData.slots.filter(s => s.done).length : 0;
+    const isToday = dateStr === todayStr;
+
+    let cellStyle = 'border:1px solid var(--border);border-radius:8px;padding:6px;min-height:72px;';
+    if (isToday) cellStyle += 'background:var(--accent-bg);border-color:var(--accent);';
+
+    html += `<div style="${cellStyle}">`;
+    html += `<div style="font-size:13px;font-weight:${isToday?'700':'400'};margin-bottom:4px;">${d}</div>`;
+    if (totalSlots > 0) {
+      html += `<div style="font-size:11px;color:var(--text-secondary);">${doneSlots}/${totalSlots}</div>`;
+      html += `<div style="height:3px;background:var(--border);border-radius:2px;margin-top:4px;"><div style="width:${Math.round(doneSlots/totalSlots*100)}%;height:100%;background:var(--done);border-radius:2px;"></div></div>`;
+    }
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function changeMonth(delta) {
+  calendarMonth += delta;
+  if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+  if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+  renderCalendar();
+}
+
+// === 进度路线图 ===
+let statsCurrentGoalId = null;
+let statsCanvasScale = 1;
+let statsCanvasOffset = { x: 0, y: 0 };
+let statsIsPanning = false;
+let statsPanStart = null;
+let statsConnectingFrom = null;
+let statsDraggedCard = null;
+
+function renderStats() {
+  const el = document.getElementById('page-stats');
+  const goals = Store.getGoals();
+
+  // 筛选有已完成任务的目标
+  const goalsWithDone = goals.filter(g =>
+    g.phases.some(p => p.tasks.some(t => t.done))
+  );
+
+  if (goalsWithDone.length === 0) {
+    el.innerHTML = '<h2 style="margin-bottom:20px;">📊 进度路线图</h2><div style="text-align:center;padding:60px;color:var(--text-secondary);"><p style="font-size:40px;">🗺️</p><p>暂无已完成任务，完成一些任务后在这里创建路线图</p></div>';
+    return;
+  }
+
+  // 默认选中第一个
+  if (!statsCurrentGoalId || !goals.some(g => g.id === statsCurrentGoalId)) {
+    statsCurrentGoalId = goalsWithDone[0].id;
+  }
+
+  const currentGoal = goals.find(g => g.id === statsCurrentGoalId);
+
+  let html = '<h2 style="margin-bottom:16px;">📊 进度路线图</h2>';
+
+  // Tab 切换
+  html += '<div class="stats-tabs">';
+  for (const g of goalsWithDone) {
+    const active = g.id === statsCurrentGoalId ? ' active' : '';
+    html += `<div class="stats-tab${active}" onclick="switchStatsGoal('${g.id}')">🎯 ${escapeHtml(g.title)}</div>`;
+  }
+  html += '</div>';
+
+  // 大画布
+  html += '<div class="stats-canvas-wrap" id="stats-canvas-wrap" onwheel="statsHandleWheel(event)">';
+  html += `<div class="stats-canvas" id="stats-canvas" style="transform:scale(${statsCanvasScale}) translate(${statsCanvasOffset.x}px,${statsCanvasOffset.y}px);">`;
+  html += '<svg class="connections" id="stats-connections"></svg>';
+  // 卡片将在 renderStatsCanvasCards 中渲染
+  html += '</div>';
+  html += '<div class="zoom-controls"><button onclick="statsZoomIn()">+</button><button onclick="statsZoomOut()">-</button><button onclick="statsZoomReset()">⟲</button></div>';
+  html += '<div class="zoom-level" id="stats-zoom-level">' + Math.round(statsCanvasScale * 100) + '%</div>';
+  html += '</div>';
+
+  // 任务池
+  html += renderStatsPool(currentGoal);
+
+  el.innerHTML = html;
+
+  // 渲染画布中的卡片
+  renderStatsCanvasCards(currentGoal);
+
+  // 绑定画布拖拽平移事件
+  bindCanvasPanEvents();
+}
+
+function switchStatsGoal(goalId) {
+  statsCurrentGoalId = goalId;
+  // 重置视图
+  statsCanvasScale = 1;
+  statsCanvasOffset = { x: 0, y: 0 };
+  renderStats();
+}
+
+function renderStatsPool(goal) {
+  // 收集该目标下已完成但 canvas_position 为 null 的任务
+  const unplaced = [];
+  for (const phase of goal.phases) {
+    for (const task of phase.tasks) {
+      if (task.done && !task.canvas_position) {
+        unplaced.push({ ...task, phaseTitle: phase.title });
+      }
+    }
+  }
+
+  if (unplaced.length === 0) {
+    return '<div class="roadmap-pool"><div class="roadmap-pool-title">📋 拖入画布</div><div class="roadmap-pool-cards" style="color:var(--text-secondary);font-size:13px;">所有已完成任务已在路线图中 ✅</div></div>';
+  }
+
+  let html = '<div class="roadmap-pool"><div class="roadmap-pool-title">📋 拖入画布</div><div class="roadmap-pool-cards" id="stats-pool-cards">';
+  for (const task of unplaced) {
+    html += `<div class="pool-card" draggable="true" ondragstart="statsPoolDragStart(event,'${task.id}')" data-task-id="${task.id}">${escapeHtml(task.title)}</div>`;
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function renderStatsCanvasCards(goal) {
+  const canvas = document.getElementById('stats-canvas');
+  if (!canvas) return;
+
+  // 移除旧的卡片（保留 .connections svg）
+  const oldCards = canvas.querySelectorAll('.roadmap-card');
+  oldCards.forEach(c => c.remove());
+
+  // 收集已完成且有位置的任务
+  const placed = [];
+  for (const phase of goal.phases) {
+    for (const task of phase.tasks) {
+      if (task.done && task.canvas_position) {
+        placed.push({ ...task, phaseTitle: phase.title });
+      }
+    }
+  }
+
+  for (const task of placed) {
+    const card = document.createElement('div');
+    card.className = 'roadmap-card done';
+    card.dataset.taskId = task.id;
+    card.style.left = task.canvas_position.x + 'px';
+    card.style.top = task.canvas_position.y + 'px';
+    // 获取完成日期
+    let doneDate = task.completed_at || '';
+    if (!doneDate) {
+      for (const [d, dd] of Object.entries(Store.data.days)) {
+        if (dd.slots && dd.slots.some(s => s.task_id === task.id && s.done)) {
+          doneDate = d; break;
+        }
+      }
+    }
+    const dateDisplay = doneDate ? doneDate.slice(5) : '';
+    card.innerHTML = `
+      <div class="card-title">${escapeHtml(task.title)}</div>
+      <div class="card-meta">${escapeHtml(task.phaseTitle)}</div>
+      <div class="card-date">${dateDisplay}</div>
+      <div class="card-connector" onmousedown="statsConnectorStart(event,'${task.id}')" title="拖拽连线"></div>
+      <div class="card-connector-left" onmouseup="statsConnectorEnd(event,'${task.id}')" title="连接到这里"></div>
+    `;
+    card.onclick = (e) => {
+      if (e.target.closest('.card-connector') || e.target.closest('.card-connector-left')) return;
+      statsOpenModal(task.id);
+    };
+    // 卡片拖拽
+    card.draggable = true;
+    card.ondragstart = (e) => {
+      statsDraggedCard = task.id;
+      e.dataTransfer.effectAllowed = 'move';
+    };
+    // 纵向组合：拖到另一张卡片上 → 对齐到下方
+    card.ondragover = (e) => { e.preventDefault(); card.classList.add('drag-over'); };
+    card.ondragleave = () => { card.classList.remove('drag-over'); };
+    card.ondrop = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      card.classList.remove('drag-over');
+      if (!statsDraggedCard || statsDraggedCard === task.id) { statsDraggedCard = null; return; }
+      const targetTask = Store.findTask(task.id);
+      const draggedTask = Store.findTask(statsDraggedCard);
+      if (!targetTask || !draggedTask || !targetTask.canvas_position) { statsDraggedCard = null; return; }
+      draggedTask.canvas_position = {
+        x: targetTask.canvas_position.x,
+        y: targetTask.canvas_position.y + (card.offsetHeight || 60) + 6
+      };
+      Store.save();
+      statsDraggedCard = null;
+      renderStats();
+    };
+    canvas.appendChild(card);
+  }
+
+  // 渲染连线
+  renderStatsConnections(goal);
+}
+
+function statsPoolDragStart(e, taskId) {
+  statsDraggedCard = taskId;
+  e.dataTransfer.effectAllowed = 'copy';
+}
+
+// 在 bindCanvasPanEvents 中添加到画布的 drop 监听
+function bindCanvasPanEvents() {
+  const wrap = document.getElementById('stats-canvas-wrap');
+  if (!wrap) return;
+
+  // 接受拖放
+  wrap.addEventListener('dragover', (e) => e.preventDefault());
+  wrap.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (!statsDraggedCard) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / statsCanvasScale - statsCanvasOffset.x;
+    const y = (e.clientY - rect.top) / statsCanvasScale - statsCanvasOffset.y;
+
+    // 更新任务位置
+    const task = Store.findTask(statsDraggedCard);
+    if (task) {
+      task.canvas_position = { x: Math.max(0, x), y: Math.max(0, y) };
+      Store.save();
+    }
+    statsDraggedCard = null;
+    renderStats();
+  });
+
+  // 画布拖拽平移
+  wrap.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.roadmap-card') || e.target.closest('.zoom-controls')) return;
+    statsIsPanning = true;
+    statsPanStart = { x: e.clientX - statsCanvasOffset.x, y: e.clientY - statsCanvasOffset.y };
+    wrap.style.cursor = 'grabbing';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!statsIsPanning) return;
+    statsCanvasOffset.x = e.clientX - statsPanStart.x;
+    statsCanvasOffset.y = e.clientY - statsPanStart.y;
+    const canvas = document.getElementById('stats-canvas');
+    if (canvas) {
+      canvas.style.transform = `scale(${statsCanvasScale}) translate(${statsCanvasOffset.x}px,${statsCanvasOffset.y}px)`;
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    statsIsPanning = false;
+    if (wrap) wrap.style.cursor = 'grab';
+  });
+}
+
+function statsHandleWheel(e) {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.08 : 0.08;
+  const newScale = Math.max(0.3, Math.min(3, statsCanvasScale + delta));
+  statsCanvasScale = newScale;
+  applyCanvasTransform();
+  const zoomLabel = document.getElementById('stats-zoom-level');
+  if (zoomLabel) zoomLabel.textContent = Math.round(statsCanvasScale * 100) + '%';
+}
+
+function statsZoomIn() {
+  statsCanvasScale = Math.min(3, statsCanvasScale + 0.2);
+  applyCanvasTransform();
+  const zoomLabel = document.getElementById('stats-zoom-level');
+  if (zoomLabel) zoomLabel.textContent = Math.round(statsCanvasScale * 100) + '%';
+}
+
+function statsZoomOut() {
+  statsCanvasScale = Math.max(0.3, statsCanvasScale - 0.2);
+  applyCanvasTransform();
+  const zoomLabel = document.getElementById('stats-zoom-level');
+  if (zoomLabel) zoomLabel.textContent = Math.round(statsCanvasScale * 100) + '%';
+}
+
+function statsZoomReset() {
+  statsCanvasScale = 1;
+  statsCanvasOffset = { x: 0, y: 0 };
+  applyCanvasTransform();
+  const zoomLabel = document.getElementById('stats-zoom-level');
+  if (zoomLabel) zoomLabel.textContent = '100%';
+}
+
+function applyCanvasTransform() {
+  const canvas = document.getElementById('stats-canvas');
+  if (canvas) {
+    canvas.style.transform = `scale(${statsCanvasScale}) translate(${statsCanvasOffset.x}px,${statsCanvasOffset.y}px)`;
+  }
+}
+
+function renderStatsConnections(goal) {
+  const svg = document.getElementById('stats-connections');
+  if (!svg) return;
+  svg.innerHTML = '';
+
+  // 收集所有已完成且有位置的 taskId → rect
+  const cardMap = {};
+  for (const phase of goal.phases) {
+    for (const task of phase.tasks) {
+      if (task.done && task.canvas_position) {
+        cardMap[task.id] = task;
+      }
+    }
+  }
+
+  // 收集所有卡片 DOM 元素
+  const cardEls = document.querySelectorAll('.roadmap-card');
+  const elMap = {};
+  cardEls.forEach(el => { elMap[el.dataset.taskId] = el; });
+
+  for (const taskId in cardMap) {
+    const task = cardMap[taskId];
+    if (!task.connections) continue;
+    for (const targetId of task.connections) {
+      if (!cardMap[targetId] || !elMap[taskId] || !elMap[targetId]) continue;
+
+      const fromEl = elMap[taskId];
+      const toEl = elMap[targetId];
+      const fromRect = fromEl.getBoundingClientRect();
+      const toRect = toEl.getBoundingClientRect();
+      const canvasRect = document.getElementById('stats-canvas').getBoundingClientRect();
+
+      // 计算相对坐标
+      const x1 = (fromRect.right - canvasRect.left) / statsCanvasScale;
+      const y1 = (fromRect.top + fromRect.height / 2 - canvasRect.top) / statsCanvasScale;
+      const x2 = (toRect.left - canvasRect.left) / statsCanvasScale;
+      const y2 = (toRect.top + toRect.height / 2 - canvasRect.top) / statsCanvasScale;
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x1);
+      line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2);
+      line.setAttribute('y2', y2);
+      line.setAttribute('stroke', 'var(--accent)');
+      line.setAttribute('stroke-width', '2');
+      line.setAttribute('stroke-opacity', '0.7');
+      line.setAttribute('data-from', taskId);
+      line.setAttribute('data-to', targetId);
+      line.onclick = (e) => {
+        e.stopPropagation();
+        if (confirm('删除这条连线？')) {
+          const t = Store.findTask(taskId);
+          if (t && t.connections) {
+            t.connections = t.connections.filter(id => id !== targetId);
+            Store.save();
+            renderStats();
+          }
+        }
+      };
+      svg.appendChild(line);
+    }
+  }
+}
+
+function statsConnectorStart(e, taskId) {
+  e.stopPropagation();
+  e.preventDefault();
+  statsConnectingFrom = taskId;
+
+  // 创建临时跟随线
+  const svg = document.getElementById('stats-connections');
+  if (!svg) return;
+
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.id = 'stats-temp-line';
+  line.setAttribute('stroke', 'var(--accent)');
+  line.setAttribute('stroke-width', '2');
+  line.setAttribute('stroke-dasharray', '5,3');
+  line.setAttribute('stroke-opacity', '0.7');
+  svg.appendChild(line);
+
+  const fromEl = document.querySelector(`.roadmap-card[data-task-id="${taskId}"]`);
+  if (!fromEl) return;
+
+  const moveHandler = (ev) => {
+    const svgRect = svg.getBoundingClientRect();
+    const canvas = document.getElementById('stats-canvas');
+    const canvasRect = canvas.getBoundingClientRect();
+    const fromRect = fromEl.getBoundingClientRect();
+
+    const x1 = (fromRect.right - canvasRect.left) / statsCanvasScale;
+    const y1 = (fromRect.top + fromRect.height / 2 - canvasRect.top) / statsCanvasScale;
+    // SVG 坐标空间需要考虑缩放
+    const x2 = (ev.clientX - svgRect.left) / statsCanvasScale;
+    const y2 = (ev.clientY - svgRect.top) / statsCanvasScale;
+
+    const tempLine = document.getElementById('stats-temp-line');
+    if (tempLine) {
+      tempLine.setAttribute('x1', x1);
+      tempLine.setAttribute('y1', y1);
+      tempLine.setAttribute('x2', x2);
+      tempLine.setAttribute('y2', y2);
+    }
+  };
+
+  const upHandler = (ev) => {
+    document.removeEventListener('mousemove', moveHandler);
+    document.removeEventListener('mouseup', upHandler);
+    const tempLine = document.getElementById('stats-temp-line');
+    if (tempLine) tempLine.remove();
+    statsConnectingFrom = null;
+  };
+
+  document.addEventListener('mousemove', moveHandler);
+  document.addEventListener('mouseup', upHandler);
+}
+
+function statsConnectorEnd(e, targetId) {
+  e.stopPropagation();
+  if (!statsConnectingFrom || statsConnectingFrom === targetId) return;
+
+  const task = Store.findTask(statsConnectingFrom);
+  if (task) {
+    if (!task.connections) task.connections = [];
+    if (!task.connections.includes(targetId)) {
+      task.connections.push(targetId);
+      Store.save();
+    }
+  }
+  statsConnectingFrom = null;
+  const tempLine = document.getElementById('stats-temp-line');
+  if (tempLine) tempLine.remove();
+  renderStats();
+}
+
+function statsOpenModal(taskId) {
+  const task = Store.findTask(taskId);
+  if (!task) return;
+
+  // 找到所属目标和阶段
+  let goalTitle = '', phaseTitle = '', dateStr = '';
+  for (const g of Store.getGoals()) {
+    for (const p of g.phases) {
+      const t = p.tasks.find(t => t.id === taskId);
+      if (t) {
+        goalTitle = g.title;
+        phaseTitle = p.title;
+        break;
+      }
+    }
+    if (goalTitle) break;
+  }
+
+  // 找到完成日期
+  dateStr = task.completed_at || '';
+  if (!dateStr) {
+    for (const [day, data] of Object.entries(Store.data.days)) {
+      if (data.slots && data.slots.some(s => s.task_id === taskId && s.done)) {
+        dateStr = day;
+        break;
+      }
+    }
+  }
+
+  // 移除旧弹窗
+  const old = document.querySelector('.stats-modal-overlay');
+  if (old) old.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'stats-modal-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.innerHTML = `
+    <div class="stats-modal">
+      <h3>📋 ${escapeHtml(task.title)}</h3>
+      <div class="field-label">所属目标</div>
+      <div class="field-value">🎯 ${escapeHtml(goalTitle)}</div>
+      <div class="field-label">所属阶段</div>
+      <div class="field-value">📂 ${escapeHtml(phaseTitle)}</div>
+      ${dateStr ? `<div class="field-label">完成日期</div><div class="field-value">📅 ${formatDateCN(dateStr)}</div>` : ''}
+      <div class="field-label">预计时间</div>
+      <div class="field-value">${task.estimated_minutes} 分钟</div>
+      <div class="field-label">完成备注</div>
+      <textarea id="stats-note-editor" placeholder="记录完成情况、心得、关键思路...">${escapeHtml(task.completion_note || '')}</textarea>
+      <div class="modal-actions">
+        <button onclick="this.closest('.stats-modal-overlay').remove()" style="border:1px solid var(--border);background:var(--bg);color:var(--text);">关闭</button>
+        <button id="stats-note-save-btn" style="background:var(--accent);color:#fff;border:none;font-weight:500;">保存备注</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  document.getElementById('stats-note-save-btn').addEventListener('click', () => {
+    const note = document.getElementById('stats-note-editor').value;
+    task.completion_note = note;
+    Store.save();
+    overlay.remove();
+  });
+
+  // Ctrl+Enter 快捷保存
+  document.getElementById('stats-note-editor').addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+      document.getElementById('stats-note-save-btn').click();
+    }
+  });
+}
+
+// === 数据管理 ===
+function renderData() {
+  const el = document.getElementById('page-data');
+  const data = Store.data;
+  const goalCount = data.goals.length;
+  const taskCount = data.goals.reduce((s, g) => s + g.phases.reduce((s2, p) => s2 + p.tasks.length, 0), 0);
+  const dayCount = Object.keys(data.days).length;
+
+  let html = '<h2 style="margin-bottom:20px;">⚙️ 数据管理</h2>';
+
+  // 数据概览
+  html += '<div style="display:flex;gap:16px;margin-bottom:24px;">';
+  html += dataCard('📌', '目标', goalCount);
+  html += dataCard('📋', '任务', taskCount);
+  html += dataCard('📅', '记录天数', dayCount);
+  html += '</div>';
+
+  // 操作按钮
+  html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px;">';
+  html += '<button onclick="downloadData()" style="padding:10px 24px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;">📤 导出数据</button>';
+  html += '<button onclick="importData()" style="padding:10px 24px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:14px;background:var(--bg);">📥 导入数据</button>';
+  html += '<button onclick="clearAllData()" style="padding:10px 24px;border:1px solid #ff3b30;color:#ff3b30;border-radius:8px;cursor:pointer;font-size:14px;background:var(--bg);">🗑️ 清空数据</button>';
+  html += '</div>';
+
+  // 数据预览
+  html += '<h3 style="margin-bottom:8px;">📄 数据预览</h3>';
+  html += `<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:12px;max-height:300px;overflow:auto;white-space:pre-wrap;line-height:1.5;">${escapeHtml(Store.exportJSON())}</pre>`;
+
+  el.innerHTML = html;
+}
+
+function dataCard(emoji, label, count) {
+  return `<div style="flex:1;border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;">
+    <div style="font-size:28px;">${emoji}</div>
+    <div style="font-size:28px;font-weight:700;margin:4px 0;">${count}</div>
+    <div style="font-size:13px;color:var(--text-secondary);">${label}</div>
+  </div>`;
+}
+
+function downloadData() {
+  const blob = new Blob([Store.exportJSON()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `planhelper-${getTodayStr()}.json`;
+  a.click();
+}
+
+function importData() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        Store.importJSON(ev.target.result);
+        renderAll();
+        alert('✅ 导入成功！');
+      } catch(err) {
+        alert('❌ 导入失败：' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function clearAllData() {
+  if (!confirm('确定清空所有数据？此操作不可撤销！')) return;
+  localStorage.removeItem('planhelper_data');
+  Store.init();
+  renderAll();
+}
+
+// === 弹窗操作 ===
+function toggleGoalExpand(id) {
+  const el = document.getElementById(`goal-${id}-phases`);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleTaskDone(taskId) {
+  Store.toggleTask(taskId);
+  renderAll();
+}
+
+function deleteTask(taskId) {
+  if (confirm('确定删除此任务？')) {
+    Store.deleteTask(taskId);
+    renderAll();
+  }
+}
+
+function showAddRoutineDialog() {
+  const title = prompt('输入惯例名称：');
+  if (!title || !title.trim()) return;
+  const mins = prompt('预计时间（分钟）：', '30');
+  Store.addRoutine(title.trim(), parseInt(mins) || 30);
+  renderAll();
+}
+
+function deleteRoutine(id) {
+  if (confirm('确定删除此惯例？')) {
+    Store.deleteRoutine(id);
+    renderAll();
+  }
+}
+
+function showAddGoalDialog() {
+  const title = prompt('输入目标名称：');
+  if (title && title.trim()) {
+    Store.addGoal(title.trim());
+    renderAll();
+  }
+}
+
+function showBulkImportDialog() {
+  // 移除已有弹窗
+  const old = document.getElementById('bulk-import-overlay');
+  if (old) old.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'bulk-import-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:1000;';
+  overlay.innerHTML = `<div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:24px;width:560px;max-width:90vw;max-height:80vh;display:flex;flex-direction:column;">
+    <h3 style="margin-bottom:12px;">📥 批量导入长期计划</h3>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">粘贴 AI 生成的 JSON，格式如下：</p>
+    <pre style="font-size:11px;color:var(--text-secondary);background:var(--bg);border-radius:6px;padding:8px;margin-bottom:8px;white-space:pre-wrap;line-height:1.5;">[
+  {
+    "title": "目标名称",
+    "phases": [
+      {
+        "title": "阶段名称",
+        "tasks": [
+          { "title": "任务名", "estimated_minutes": 60 }
+        ]
+      }
+    ]
+  }
+]</pre>
+    <textarea id="bulk-import-textarea" style="flex:1;min-height:180px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;font-family:monospace;resize:vertical;margin-bottom:12px;" placeholder="在此粘贴 JSON..."></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="this.closest('#bulk-import-overlay').remove()" style="padding:8px 20px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:14px;background:var(--bg);">取消</button>
+      <button id="bulk-import-confirm-btn" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;">导入</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById('bulk-import-confirm-btn').addEventListener('click', () => {
+    const text = document.getElementById('bulk-import-textarea').value.trim();
+    if (!text) return;
+    try {
+      const items = JSON.parse(text);
+      if (!Array.isArray(items)) throw new Error('需要 JSON 数组');
+      Store.bulkImportGoals(items);
+      overlay.remove();
+      renderAll();
+      alert('✅ 批量导入成功！');
+    } catch (err) {
+      alert('❌ 导入失败：' + err.message);
+    }
+  });
+}
+
+function showEditGoalDialog(id) {
+  const goal = Store.data.goals.find(g => g.id === id);
+  if (!goal) return;
+  const title = prompt('修改目标名称：', goal.title);
+  if (title && title.trim()) {
+    Store.updateGoal(id, { title: title.trim() });
+    renderAll();
+  }
+}
+
+function confirmDeleteGoal(id) {
+  if (confirm('确定删除此目标及其所有阶段和任务？（不可撤销）')) {
+    Store.deleteGoal(id);
+    renderAll();
+  }
+}
+
+function showAddPhaseDialog(goalId) {
+  const title = prompt('输入阶段名称：');
+  if (title && title.trim()) {
+    Store.addPhase(goalId, title.trim());
+    renderAll();
+  }
+}
+
+function showAddTaskDialog(goalId, phaseId) {
+  const title = prompt('输入任务名称：');
+  if (!title || !title.trim()) return;
+  const mins = prompt('预计时间（分钟）：', '60');
+  const minutes = parseInt(mins) || 60;
+  Store.addTask(goalId, phaseId, title.trim(), minutes);
+  renderAll();
+}
+
+// === 首次渲染 ===
+renderAll();
+
+// === 页面切换 ===
+document.querySelectorAll('.sidebar-item[data-page]').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    item.classList.add('active');
+    document.getElementById('page-' + item.dataset.page).classList.add('active');
+  });
+});
+
+// === 导入导出 ===
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const blob = new Blob([Store.exportJSON()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `planhelper-${getTodayStr()}.json`;
+  a.click();
+});
+
+document.getElementById('importBtn').addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        Store.importJSON(ev.target.result);
+        if (typeof renderAll === 'function') renderAll();
+        alert('✅ 导入成功！');
+      } catch(err) {
+        alert('❌ 导入失败：' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+});
+</script>
+</body>
+</html>
