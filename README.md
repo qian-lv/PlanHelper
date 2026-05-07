@@ -39,4 +39,4 @@ docs/
 
 ## AI 辅助开发
 
-本项目使用 Claude Code 结合小米 MiMo API，在 Superpowers 工作流框架下完成开发，采用多 Agent 协作流水线（实现代理 → 规范审查 → 代码质量审查）和长链推理驱动设计决策。
+本项目使用 Claude Code 结合Deepseek-V4-Flash，在 Superpowers 工作流框架下完成开发，采用多 Agent 协作流水线（实现代理 → 规范审查 → 代码质量审查）和长链推理驱动设计决策。
